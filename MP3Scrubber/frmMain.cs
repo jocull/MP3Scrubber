@@ -21,7 +21,7 @@ public partial class frmMain : Form
     public frmMain()
     {
         InitializeComponent();
-        this.Text = Program.APP_TITLE;
+        this.Text = Program.APP_TITLE + " - v" + Program.APP_VERSION;
     }
 
     private void btnBrowse_Click(object sender, EventArgs e)
@@ -60,66 +60,93 @@ public partial class frmMain : Form
 
     private void scrubFiles(string path)
     {
-        foreach (string directory in Directory.GetDirectories(path))
+        string[] paths = Directory.GetFiles(path, "*", System.IO.SearchOption.AllDirectories);
+
+        foreach (string file in paths)
         {
-            scrubFiles(directory);
-            foreach (string file in Directory.GetFiles(directory))
+            //Leave ignored directories alone
+            if (file.ToLower().Contains(Path.DirectorySeparatorChar + "_ignore" + Path.DirectorySeparatorChar))
+                continue;
+
+            //Check the file's creation date
+            if (File.GetCreationTime(file) >= mFileMaxDate)
+                continue;
+
+            //Check to make sure this isn't the folder image
+            if (Path.GetFileName(file) == "folder.jpg")
+                continue;
+
+            //This file gets trashed!
+            try
             {
-                if ((Path.GetExtension(file).ToUpper() != Program.APP_SCRUB_EXTENTION
-                        || File.GetCreationTime(file) < mFileMaxDate)
-                        && Path.GetFileName(file) != "folder.jpg") //folder images are an exception
+                if (mRecycle)
                 {
-                    //This file gets trashed!
-                    try
-                    {
-                        if (mRecycle)
-                        {
-                            if(!mSimulate)
-                                FileSystem.DeleteFile(file, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-                            logText("File " + file + " recycled.");
-                        }
-                        else
-                        {
-                            if(!mSimulate)
-                                File.Delete(file);
-                            logText("File " + file + " deleted.");
-                        }
-                        mFileScrubCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        //File in use? Missing? etc?
-                        logText("***ERROR WHILE DELETING FILE: " + ex.Message);
-                    }
+                    if(!mSimulate)
+                        FileSystem.DeleteFile(file, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                    logText("File " + file + " recycled.");
                 }
+                else
+                {
+                    if(!mSimulate)
+                        File.Delete(file);
+                    logText("File " + file + " deleted.");
+                }
+                mFileScrubCount++;
+            }
+            catch (Exception ex)
+            {
+                //File in use? Missing? etc?
+                logText("***ERROR WHILE DELETING FILE: " + ex.Message);
             }
         }
     }
 
     private void scrubFolders(string path)
     {
-        foreach (string directory in Directory.GetDirectories(path))
+        List<string> paths = new List<string>(Directory.GetDirectories(path, "*", System.IO.SearchOption.AllDirectories));
+
+        //Reduce the folders until gone.
+        while (paths.Count > 0)
         {
-            scrubFolders(directory);
-            //Pop off empty directories.
-            if (Directory.GetFiles(directory).Length == 0
-                    && Directory.GetDirectories(directory).Length == 0)
+            string directory = paths[0];
+            if (directory.ToLower().Contains(Path.DirectorySeparatorChar + "_ignore"))
+            {
+                paths.Remove(directory);
+                continue;
+            }
+
+            //Pop off empty directories... if subdirectories of this directory are empty
+            if (Directory.GetFiles(directory, "*", System.IO.SearchOption.AllDirectories).Length == 0)
             {
                 //This directory gets trashed!
                 try
                 {
                     if (mRecycle)
                     {
-                        if(!mSimulate)
+                        if (!mSimulate)
                             FileSystem.DeleteDirectory(directory, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
                         logText("Directory " + directory + " recycled.");
                     }
                     else
                     {
-                        if(!mSimulate)
+                        if (!mSimulate)
                             Directory.Delete(directory);
                         logText("Directory " + directory + " deleted.");
                     }
+
+                    //Remove this dir and all children from the path list
+                    List<string> removePaths = new List<string>();
+                    foreach (string p in paths)
+                    {
+                        if (p.Contains(directory))
+                            removePaths.Add(p);
+                    }
+                    foreach (string p in removePaths)
+                    {
+                        paths.Remove(p);
+                    }
+
+                    //Increment and move on...
                     mFolderScrubCount++;
                 }
                 catch (Exception ex)
@@ -128,35 +155,37 @@ public partial class frmMain : Form
                     logText("***ERROR WHILE DELETING DIRECTORY: " + ex.Message);
                 }
             }
+
+            //Remove this directory from the list (forced reduce)
+            paths.Remove(directory);
         }
     }
 
     private void tiltMP3Names(string path)
     {
         Random rnd = new Random();
-        foreach (string directory in Directory.GetDirectories(path))
+        string[] paths = Directory.GetFiles(path, "*" + Program.APP_SCRUB_EXTENTION, System.IO.SearchOption.AllDirectories);
+
+        foreach (string file in paths)
         {
-            tiltMP3Names(directory);
-            foreach (string file in Directory.GetFiles(directory))
+            //Leave ignored directories alone
+            if (file.ToLower().Contains(Path.DirectorySeparatorChar + "_ignore" + Path.DirectorySeparatorChar))
+                continue;
+
+            //This file gets tilted!
+            try
             {
-                if(Path.GetExtension(file).ToUpper() == Program.APP_SCRUB_EXTENTION)
-                {
-                    //This file gets trashed!
-                    try
-                    {
-                        File.Move(file, Path.Combine(Path.GetDirectoryName(file),
-                            Path.GetFileNameWithoutExtension(file) + 
-                            "-" + rnd.Next(int.MaxValue) + 
-                            Path.GetExtension(file)));
-                        logText("File " + file + " tilted.");
-                        mFileScrubCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        //File in use? Missing? etc?
-                        logText("***ERROR WHILE TILTING FILE: " + ex.Message);
-                    }
-                }
+                File.Move(file, Path.Combine(Path.GetDirectoryName(file),
+                    Path.GetFileNameWithoutExtension(file) + 
+                    "-" + rnd.Next(int.MaxValue) + 
+                    Path.GetExtension(file)));
+                logText("File " + file + " tilted.");
+                mFileScrubCount++;
+            }
+            catch (Exception ex)
+            {
+                //File in use? Missing? etc?
+                logText("***ERROR WHILE TILTING FILE: " + ex.Message);
             }
         }
     }

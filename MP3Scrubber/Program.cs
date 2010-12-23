@@ -5,6 +5,7 @@ using System.Windows.Forms;
 static class Program
 {
     public const string APP_TITLE = "MP3Scrubber";
+    public const string APP_VERSION = "1.1";
     public const string APP_SCRUB_EXTENTION = ".MP3";
 
     [STAThread]
